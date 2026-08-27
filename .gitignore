@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# TypeScript and test output
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Logs and local reports
+*.log
+logs/
+report/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local project tooling
+.atl/
