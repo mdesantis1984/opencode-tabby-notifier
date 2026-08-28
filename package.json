@@ -16,6 +16,8 @@
   "scripts": {
     "test": "tsx --test test/*.test.ts",
     "harness:ipc": "tsx scripts/harness-ipc.ts",
+    "harness:os": "tsx scripts/harness-os.ts",
+    "harness:telegram": "tsx scripts/harness-telegram.ts",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
