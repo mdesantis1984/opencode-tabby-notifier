@@ -14,7 +14,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "tsx --test test/index.test.ts",
+    "test": "tsx --test test/*.test.ts",
+    "harness:ipc": "tsx scripts/harness-ipc.ts",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
