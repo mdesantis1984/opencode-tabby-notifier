@@ -185,7 +185,7 @@
     "node-releases": "^2.0.54",
     "p-limit": "^2.3.0",
     "p-locate": "^4.1.0",
-    "p-try": "^2.2.0",
+    "p-try": "^3.0.0",
     "parse5": "^7.3.0",
     "path-exists": "^4.0.0",
     "path-key": "^3.1.1",
