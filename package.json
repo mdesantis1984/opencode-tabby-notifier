@@ -36,8 +36,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "tsx --test test/*.test.ts",
-    "test:tabby": "tsx --import ./tabby-plugin/test/setup.ts --test tabby-plugin/test/**/*.test.ts",
+    "test": "tsx --test test/adapters.test.ts test/foundation.test.ts test/index.test.ts test/protocol.test.ts",
+    "test:tabby": "tsx --import ./tabby-plugin/test/setup.ts --test tabby-plugin/test/tabby-plugin.test.ts",
     "harness:ipc": "tsx scripts/harness-ipc.ts",
     "harness:os": "tsx scripts/harness-os.ts",
     "harness:telegram": "tsx scripts/harness-telegram.ts",
