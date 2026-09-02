@@ -1,13 +1,14 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
-import type { CompletionEventV1 } from "../domain/completion.ts"
+import type { AttentionNotificationV1, CompletionNotificationV1 } from "../domain/completion.ts"
 
 const Spawn = (command: string, args: readonly string[], options: SpawnOptions): ChildProcess => spawn(command, args, options)
 const safe = (value: string) => value.replace(/[\r\n]/g, " ").slice(0, 120)
 type Options = { timeoutMs?: number; signal?: AbortSignal }
 
-export function sendOsNotification(event: CompletionEventV1, spawnProcess = Spawn, options: Options = {}): Promise<void> {
+export function sendOsNotification(event: AttentionNotificationV1 | CompletionNotificationV1, spawnProcess = Spawn, options: Options = {}): Promise<void> {
   if (process.platform !== "linux") return Promise.resolve()
-  const args = ["--app-name", "OpenCode", "OpenCode", `OpenCode finished: ${safe(event.projectLabel || "work")} (${event.outcome})`]
+  const kind = "kind" in event ? event.kind : event.outcome
+  const args = ["--app-name", "OpenCode", "OpenCode", `OpenCode ${kind === "completed" || kind === "success" ? "finished" : "requires attention"}: ${safe(event.projectLabel || "work")} (${kind})`]
   return new Promise((resolve, reject) => {
     const child = spawnProcess("notify-send", args, { shell: false, stdio: "ignore" })
     const timer = setTimeout(() => { child.kill(); reject(new Error("notification timeout")) }, options.timeoutMs ?? 2_000)

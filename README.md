@@ -1,53 +1,104 @@
 # OpenCode Tabby Notifier
 
-Small TypeScript ESM plugin for OpenCode. The current implementation sends a
-native Linux desktop notification when a primary session emits
-`session.idle`; child sessions are ignored when OpenCode reports a parent
-session.
+OpenCode Tabby Notifier projects each primary OpenCode session into bounded
+desktop, Telegram, and optional Tabby state notifications. Each Tabby tab is
+written by one per-session state machine and stays actionable until focused.
 
-This repository is currently an **OpenCode plugin**, not a Tabby plugin. The
-project roadmap plans to add two more notification channels:
+## Quick path
 
-1. Telegram notifications.
-2. A Tabby plugin that changes the relevant terminal tab icon or activity state.
+This repository contains two packages, and both are required for the npm path:
 
-Those channels are not implemented yet. No Telegram credentials or Tabby
-installation are required by the current implementation.
+1. Install `opencode-tabby-notifier` as the OpenCode producer.
+2. Install `tabby-opencode-notifier` as the Tabby consumer.
+3. Configure matching runtime variables and restart the hosts.
 
-## Requirements
+The packages are prepared for publication but are **not published yet**. Until
+the first release, use the local installation in [Installation](docs/INSTALLATION.md).
 
-- Node.js 20 or newer
-- Linux desktop notification service
-- [`notify-send`](https://manpages.debian.org/notify-send) available on `PATH`
-- OpenCode with TypeScript plugin support
+## What it does
 
-## Local installation
+The OpenCode plugin listens to official session status, permission, question,
+retry, error, and idle boundaries, verifies that the session is primary, and
+publishes metadata-only state events. The state table is:
 
-From this directory:
+| OpenCode boundary | Tabby state | Indicator |
+|---|---|---|
+| `session.status=busy` | working | blue spinner |
+| `permission.asked` | waiting-permission | amber hand |
+| `question.asked` | waiting-question | amber question |
+| retry boundary/status | retrying | violet redo |
+| error boundary/status | error | red warning |
+| `session.idle` | completed | green bell |
 
-```sh
-mkdir -p ~/.config/opencode/plugins
-cp src/index.ts ~/.config/opencode/plugins/opencode-tabby-notifier.ts
-```
+Only the producer state machine writes state; repeated boundaries are ignored
+per session and generation. A loopback HTTP listener authenticates each event
+with HMAC-SHA256 and a per-launch correlation ID. The Tabby consumer maps it to
+the correct profile, including split-tab recovery.
 
-Then start OpenCode normally. OpenCode discovers the plugin from its plugins
-directory; no Tabby installation or configuration is required.
+The existing profile icon is preserved. Every actionable state remains visible
+until the target tab receives focus, then the original icon/activity state is
+restored.
 
-## Package installation
+## Platform matrix
 
-```sh
-npm install opencode-tabby-notifier
-```
+| Capability | Linux | Windows | macOS |
+|---|---:|---:|---:|
+| Core Tabby bell + OpenCode loopback IPC | Fully verified | Designed cross-platform; not live-verified | Designed cross-platform; not live-verified |
+| `notify-send` desktop notification | Supported | No-op | No-op |
+| Telegram notification | Supported | Works when configured | Works when configured |
 
-Add `opencode-tabby-notifier` to the OpenCode plugin list in your OpenCode
-configuration.
+Linux is the only platform with live end-to-end verification in this project.
+Do not treat the Windows/macOS design claim as a live compatibility guarantee.
+
+## Installation and configuration
+
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for Linux, Windows, macOS,
+local development, paths, and configuration syntax. Future npm commands are
+marked as post-publication commands. Telegram requires both
+`OPENCODE_NOTIFY_TELEGRAM_TOKEN` and `OPENCODE_NOTIFY_TELEGRAM_CHAT_ID`.
+
+## Security model
+
+Events contain only bounded labels and completion metadata: never prompts,
+output, full paths, provider/model data, or environment values. IPC is
+loopback-only, size-limited, fresh, HMAC-authenticated, correlation-bound, and
+replay-protected with deterministic expiry and eviction. Child sessions are
+ignored. Review [SECURITY.md](SECURITY.md) before enabling a plugin that runs
+with OpenCode or Tabby privileges.
+
+## Troubleshooting
+
+- No bell: confirm both packages are installed, the correlation ID and secret
+  match, and the Tabby profile is enabled; then restart both hosts.
+- No Linux desktop popup: verify `notify-send` is on `PATH` and your desktop
+  notification service is running.
+- No Telegram message: verify both Telegram variables without putting them in
+  Git, a profile, an issue, or a log.
+- A bell remains: focus the target profile tab; persistence is intentional.
 
 ## Development
 
 ```sh
-npm ci
+npm ci --legacy-peer-deps
 npm test
+npm run test:tabby
 npm run typecheck
+npm run build:tabby
 ```
 
-Notification failures are logged and never interrupt an OpenCode run.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Publication status
+
+- npm packages: `opencode-tabby-notifier` and `tabby-opencode-notifier`, both
+  version `0.1.0`, prepared but not published.
+- Tabby: automatic discovery requires an npm package with a `tabby-*` name and
+  the `tabby-plugin` keyword; there is no formal submission store.
+- OpenCode: install the npm package and submit an ecosystem documentation PR to
+  the official `anomalyco/opencode` repository after publication.
+
+Release and store-readiness procedures are in [docs/RELEASING.md](docs/RELEASING.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

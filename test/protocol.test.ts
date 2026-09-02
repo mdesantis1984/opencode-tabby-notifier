@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createFrame, verifyFrame, type CompletionEventV1 } from "../src/ipc/protocol.ts"
+import { createFrame, ReplayCache, verifyFrame, type CompletionEventV1 } from "../src/ipc/protocol.ts"
 
 const payload: CompletionEventV1 = { version: 1, eventId: "e1", correlationId: "tab-1", outcome: "success", projectLabel: "demo", completedAt: new Date().toISOString() }
 
@@ -18,4 +18,16 @@ test("rejects oversized, unauthenticated, delayed, replayed and non-loopback fra
   const seen = new Set<string>(); assert.deepEqual(verifyFrame(frame, secret, { seen }), payload)
   assert.throws(() => verifyFrame(frame, secret, { seen }))
   assert.throws(() => verifyFrame(frame, secret, { remoteAddress: "10.0.0.1" }))
+})
+
+test("bounds replay identifiers and deterministically expires and evicts cache entries", () => {
+  const now = Date.now(), cache = new ReplayCache(2, 100)
+  const frame = (eventId: string, completedAt = new Date(now).toISOString()) => createFrame({ ...payload, eventId, completedAt }, "d".repeat(64))
+  verifyFrame(frame("one"), "d".repeat(64), { seen: cache, now })
+  verifyFrame(frame("two"), "d".repeat(64), { seen: cache, now: now + 1 })
+  verifyFrame(frame("three"), "d".repeat(64), { seen: cache, now: now + 2 })
+  assert.equal(cache.size, 2)
+  assert.throws(() => verifyFrame(frame("three", new Date(now + 2).toISOString()), "d".repeat(64), { seen: cache, now: now + 2 }))
+  verifyFrame(frame("one", new Date(now + 150).toISOString()), "d".repeat(64), { seen: cache, now: now + 150 })
+  assert.throws(() => verifyFrame(frame("x".repeat(257)), "d".repeat(64), { now }))
 })

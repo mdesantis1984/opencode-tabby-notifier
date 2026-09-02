@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createConnection, createServer, type Server } from "node:net"
-import { createFrame, verifyFrame, type CompletionEventV1 } from "../src/ipc/protocol.ts"
+import { createFrame, verifyFrame, type TabbyEventV1, type CompletionEventV1 } from "../src/ipc/protocol.ts"
 
 const secret = "h".repeat(64)
 const payload: CompletionEventV1 = {
@@ -15,7 +15,7 @@ const payload: CompletionEventV1 = {
   completedAt: new Date().toISOString(),
 }
 
-type ServerState = { accepted: CompletionEventV1[]; rejected: number }
+type ServerState = { accepted: TabbyEventV1[]; rejected: number }
 
 function listen(server: Server, socketPath: string): Promise<void> {
   return new Promise((resolve, reject) => {

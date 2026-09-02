@@ -1,0 +1,33 @@
+{
+  "name": "tabby-opencode-notifier",
+  "version": "0.1.0",
+  "description": "Tabby profile and per-session OpenCode state indicators",
+  "author": "ThisCloudServices",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/mdesantis1984/opencode-tabby-notifier.git", "directory": "tabby-plugin" },
+  "homepage": "https://github.com/mdesantis1984/opencode-tabby-notifier#readme",
+  "bugs": { "url": "https://github.com/mdesantis1984/opencode-tabby-notifier/issues" },
+  "main": "dist/index.js",
+  "types": "dist/tabby-plugin/src/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "tabby-plugin"
+  ],
+  "scripts": {
+    "build": "webpack --config webpack.config.mjs && tsc -p tsconfig.build.json --emitDeclarationOnly --outDir dist",
+    "inspect:package": "npm pack --dry-run --json",
+    "test": "tsx --import ./test/setup.ts --test test/**/*.test.ts"
+  },
+  "tabbyCompatibility": "1.0.235",
+  "engines": { "node": ">=20" },
+  "peerDependencies": {
+    "tabby-core": "1.0.231-nightly.0",
+    "tabby-local": "1.0.231-nightly.0",
+    "tabby-settings": "1.0.231-nightly.0",
+    "tabby-terminal": "1.0.231-nightly.0"
+  }
+}

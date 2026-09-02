@@ -1,197 +1,135 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import type { Plugin } from "@opencode-ai/plugin"
-import { aggregateEvent, type SessionEvent } from "./domain/aggregator.ts"
-import type { CompletionEventV1 } from "./domain/completion.ts"
+import type { AttentionNotificationV1, SessionState, SessionStateEventV1 } from "./domain/completion.ts"
 import { loadConfig, type Config } from "./config.ts"
-import { sendOsNotification } from "./adapters/os.ts"
-import { sendTelegramNotification } from "./adapters/telegram.ts"
+import { createDelivery } from "./delivery.ts"
 import { sendIpcNotification } from "./adapters/ipc.ts"
-import { fanOut } from "./fanout.ts"
+import { createCoordinatorState, reduceSession, type CoordinatorEvent, type CoordinatorState } from "./domain/session-coordinator.ts"
 
 const APP_NAME = "OpenCode"
-const DEFAULT_TITLE = "OpenCode work run finished"
-const DEBOUNCE_MS = 2_000
+const DELIVERY_TIMEOUT_MS = 3_000
 const MAX_TRACKED_SESSIONS = 128
+const MAX_PROJECT_LABEL_LENGTH = 80
+const MAX_REQUESTS = 64
 
-type Session = { parentID?: string; parentId?: string; parent_id?: string }
-type SessionClient = {
-  session?: { get?: (input: { path: { id: string } }) => Promise<unknown> }
-}
-type IdleEvent = {
-  type?: string
-  properties?: {
-    sessionID?: string
-    sessionId?: string
-    parentID?: string
-    parentId?: string
-  }
-  sessionID?: string
-  sessionId?: string
-  parentID?: string
-  parentId?: string
-}
+type Session = { id?: string; parentID?: string; parentId?: string; parent_id?: string }
+type SessionClient = { session?: { get?: (input: { path: { id: string } }) => Promise<unknown> } }
 type Notify = (title: string, body: string) => Promise<void>
-type CompletionHandlerEvent = IdleEvent & { properties?: IdleEvent["properties"] & Partial<SessionEvent>; status?: string; correlationId?: string; generation?: number; childBusy?: boolean }
 
-function firstDefined(...values: Array<string | undefined>): string | undefined {
-  return values.find((value) => value !== undefined && value !== "")
-}
-
-export function sessionIdFromIdleEvent(event: IdleEvent): string | undefined {
+function firstDefined(...values: Array<string | undefined>): string | undefined { return values.find(value => value !== undefined && value !== "") }
+export function sessionIdFromIdleEvent(event: CoordinatorEvent): string | undefined {
+  const info = event.properties?.info
   return firstDefined(
-    event.properties?.sessionID,
-    event.properties?.sessionId,
-    event.sessionID,
-    event.sessionId,
+    typeof info === "object" && info !== null && typeof (info as Session).id === "string" ? (info as Session).id : undefined,
+    typeof event.properties?.sessionID === "string" ? event.properties.sessionID : undefined,
+    typeof event.properties?.sessionId === "string" ? event.properties.sessionId : undefined,
+    typeof event.sessionID === "string" ? event.sessionID : undefined,
+    typeof event.sessionId === "string" ? event.sessionId : undefined,
+    typeof event.id === "string" ? event.id : undefined,
   )
 }
-
-function parentIdFromSession(session: Session | undefined): string | undefined {
-  return firstDefined(session?.parentID, session?.parentId, session?.parent_id)
+function parentId(session?: Session): string | undefined { return firstDefined(session?.parentID, session?.parentId, session?.parent_id) }
+function sessionFromEvent(event: CoordinatorEvent): Session | undefined {
+  const info = event.properties?.info
+  return info && typeof info === "object" ? info as Session : undefined
 }
 
-export async function isPrimarySession(
-  event: IdleEvent,
-  client: SessionClient | undefined,
-): Promise<boolean> {
-  const explicitParent = firstDefined(
-    event.properties?.parentID,
-    event.properties?.parentId,
-    event.parentID,
-    event.parentId,
-  )
-  if (explicitParent) return false
-
-  const sessionID = sessionIdFromIdleEvent(event)
-  const getSession = client?.session?.get
-  if (!sessionID || !getSession) return true
-
-  try {
-    const response = await getSession({ path: { id: sessionID } }) as unknown
-    const session = response && typeof response === "object" && "data" in response
-      ? (response as { data?: Session }).data
-      : response as Session
-    return !parentIdFromSession(session)
-  } catch {
-    // Do not lose a notification because session metadata lookup failed.
-    return true
-  }
+export function projectLabelFromDirectory(directory?: string): string {
+  const basename = directory?.split(/[\\/]/).filter(Boolean).at(-1)?.trim() ?? ""
+  return basename.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, MAX_PROJECT_LABEL_LENGTH)
 }
-
-export class IdleDebouncer {
-  private readonly seen = new Map<string, number>()
-
-  constructor(
-    private readonly debounceMs = DEBOUNCE_MS,
-    private readonly maxEntries = MAX_TRACKED_SESSIONS,
-  ) {}
-
-  shouldNotify(sessionID: string, now = Date.now()): boolean {
-    const previous = this.seen.get(sessionID)
-    if (previous !== undefined && now - previous < this.debounceMs) return false
-
-    this.seen.delete(sessionID)
-    this.seen.set(sessionID, now)
-    while (this.seen.size > this.maxEntries) {
-      const oldest = this.seen.keys().next().value
-      if (oldest === undefined) break
-      this.seen.delete(oldest)
-    }
-    return true
-  }
-}
-
 export function notificationBody(directory?: string): string {
-  return directory ? `Work run finished in ${directory}` : "Work run finished"
+  const label = projectLabelFromDirectory(directory)
+  return label ? `Work run finished in ${label}` : "Work run finished"
 }
 
 type Spawn = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess
-
-export function sendLinuxNotification(
-  title: string,
-  body: string,
-  spawnProcess: Spawn = spawn,
-): Promise<void> {
+export function sendLinuxNotification(title: string, body: string, spawnProcess: Spawn = spawn): Promise<void> {
   if (process.platform !== "linux") return Promise.resolve()
-
   return new Promise((resolve, reject) => {
-    const child = spawnProcess(
-      "notify-send",
-      ["--app-name", APP_NAME, "--urgency", "normal", title, body],
-      { shell: false, stdio: "ignore" },
-    )
-    child.once("error", reject)
-    child.once("close", (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`notify-send exited with code ${code ?? "unknown"}`))
-    })
+    const child = spawnProcess("notify-send", ["--app-name", APP_NAME, "--urgency", "normal", title, body], { shell: false, stdio: "ignore" })
+    child.once("error", reject); child.once("close", code => code === 0 ? resolve() : reject(new Error("notify-send failed")))
   })
 }
 
-export function createIdleHandler({
-  client,
-  directory,
-  notify = (title, body) => sendLinuxNotification(title, body),
-  debouncer = new IdleDebouncer(),
-}: {
-  client?: SessionClient
-  directory?: string
-  notify?: Notify
-  debouncer?: IdleDebouncer
-}): (event: IdleEvent) => Promise<void> {
-  return async (event) => {
-    if (event.type !== "session.idle") return
-    const sessionID = sessionIdFromIdleEvent(event)
-    if (!sessionID || !(await isPrimarySession(event, client))) return
-    if (!debouncer.shouldNotify(sessionID)) return
-
-    try {
-      await notify(DEFAULT_TITLE, notificationBody(directory))
-    } catch (error) {
-      // Notification failure must never interrupt the OpenCode run.
-      console.warn("OpenCode Linux notification failed:", error)
-    }
-  }
+function boundedLabel(label: string): string { return projectLabelFromDirectory(label) || "work" }
+function eventId(event: CoordinatorEvent, sessionID: string, generation: number, state: SessionState): string {
+  const supplied = typeof event.eventId === "string" && /^[A-Za-z0-9._:-]{1,256}$/.test(event.eventId) ? event.eventId : `${sessionID}:${generation}:${state}`
+  return supplied
+}
+function occurredAt(event: CoordinatorEvent): string {
+  const value = event.timestamp ?? event.properties?.timestamp
+  return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : new Date().toISOString()
 }
 
-export function createCompletionHandler({
-  correlationId, projectLabel = "", client, publish,
+async function boundedPublish<T>(publish: (event: T) => Promise<unknown>, event: T): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try { await Promise.race([publish(event).then(() => undefined, () => undefined), new Promise<void>(resolve => { timer = setTimeout(resolve, DELIVERY_TIMEOUT_MS); timer.unref?.() })]) }
+  finally { if (timer) clearTimeout(timer) }
+}
+
+export function createSessionStateHandler({
+  correlationId, projectLabel = "", client, publish, publishAttention,
 }: {
   correlationId?: string; projectLabel?: string; client?: SessionClient
-  publish: (event: CompletionEventV1) => Promise<unknown>
-}): (event: CompletionHandlerEvent) => Promise<void> {
-  type State = { generation: number; correlationId: string; busy: boolean; emitted: boolean }
-  const states = new Map<string, State>()
-  return async (event) => {
-    if (event.type !== "session.status" && event.type !== "session.idle") return
-    if (!(await isPrimarySession(event, client))) return
-    const properties = event.properties ?? {}
-    const id = firstDefined(properties.sessionID, properties.sessionId, event.sessionID, event.sessionId) ?? "root"
-    const normalized: SessionEvent = {
-      type: event.type, sessionId: id, correlationId: firstDefined(properties.correlationId, event.correlationId, correlationId),
-      status: firstDefined(properties.status, event.status, event.type === "session.idle" ? "idle" : undefined),
-      generation: properties.generation ?? event.generation, childBusy: properties.childBusy ?? event.childBusy,
+  publish: (event: SessionStateEventV1) => Promise<unknown>
+  publishAttention?: (event: AttentionNotificationV1) => Promise<unknown>
+}): (event: CoordinatorEvent) => Promise<void> {
+  const states = new Map<string, CoordinatorState>()
+  const terminalAttention = new Set<string>()
+  const metadata = new Map<string, Session>()
+  const queues = new Map<string, Promise<void>>()
+  const remember = (id: string, session: Session): void => { metadata.set(id, session); while (metadata.size > MAX_TRACKED_SESSIONS) metadata.delete(metadata.keys().next().value!) }
+  const primary = async (id: string, event: CoordinatorEvent): Promise<boolean> => {
+    const explicit = sessionFromEvent(event)
+    if (explicit) remember(id, explicit)
+    let session = metadata.get(id)
+    if (!session && client?.session?.get) {
+      try {
+        const response = await client.session.get({ path: { id } })
+        session = response && typeof response === "object" && "data" in response ? (response as { data?: Session }).data : response as Session
+        if (session) remember(id, session)
+      } catch { return false }
     }
-    const previous = states.get(id) ?? (normalized.correlationId ? { generation: normalized.generation ?? 0, correlationId: normalized.correlationId, busy: false, emitted: false } : undefined)
-    const result = aggregateEvent(normalized, previous)
-    if (result) {
-      result.projectLabel = projectLabel
-      await publish(result)
-    }
-    if (!states.has(id) && previous) states.set(id, previous)
+    return Boolean(session && !parentId(session))
+  }
+  return async event => {
+    const id = sessionIdFromIdleEvent(event)
+    if (!id) return
+    if (event.type === "session.created" || event.type === "session.updated") { const session = sessionFromEvent(event); if (session) remember(id, session); return }
+    const previous = queues.get(id) ?? Promise.resolve()
+    const task = previous.then(async () => {
+      if (!correlationId || !(await primary(id, event))) return
+      const state = states.get(id) ?? createCoordinatorState()
+      const suppliedEventId = typeof event.eventId === "string" ? event.eventId : undefined
+      if (suppliedEventId && state.seen.has(suppliedEventId)) return
+      const transition = reduceSession(state, event)
+      if (suppliedEventId) { state.seen.add(suppliedEventId); while (state.seen.size > 256) state.seen.delete(state.seen.values().next().value!) }
+      states.set(id, state); while (states.size > MAX_TRACKED_SESSIONS) states.delete(states.keys().next().value!)
+      if (!transition) return
+      const now = occurredAt(event)
+      await boundedPublish(publish, { version: 1, eventId: eventId(event, id, transition.generation, transition.state), correlationId, state: transition.state, projectLabel: boundedLabel(projectLabel), occurredAt: now, generation: transition.generation })
+      const attentionKey = `${id}:${transition.generation}:${transition.attention}`
+      if (transition.attention && publishAttention && (!['completed', 'error'].includes(transition.attention) || !terminalAttention.has(attentionKey))) {
+        if (transition.attention === "completed" || transition.attention === "error") { terminalAttention.add(attentionKey); while (terminalAttention.size > MAX_TRACKED_SESSIONS * 2) terminalAttention.delete(terminalAttention.values().next().value!) }
+        await boundedPublish(publishAttention, { version: 1, eventId: `attention:${eventId(event, id, transition.generation, transition.state)}`, correlationId, kind: transition.attention, outcome: transition.attention === "completed" ? "success" : transition.attention === "error" ? "failure" : undefined, projectLabel: boundedLabel(projectLabel), occurredAt: now, generation: transition.generation })
+      }
+    })
+    const settled = task.then(() => undefined, () => undefined); queues.set(id, settled)
+    try { await task } finally { if (queues.get(id) === settled) queues.delete(id) }
   }
 }
 
 export const OpenCodeLinuxSessionNotify: Plugin = async ({ client, directory }) => {
   const config: Config = loadConfig()
-  const queue = fanOut({
-    os: (event) => sendOsNotification(event),
-    telegram: (event) => config.telegramToken && config.telegramChatId
-      ? sendTelegramNotification(event, { token: config.telegramToken, chatId: config.telegramChatId }) : Promise.resolve(),
-    ipc: (event) => config.endpoint && config.ipcSecret ? sendIpcNotification(event, { endpoint: config.endpoint, secret: config.ipcSecret }) : Promise.resolve(),
+  const delivery = createDelivery(config)
+  const projectLabel = config.projectLabel ?? projectLabelFromDirectory(directory)
+  const handle = createSessionStateHandler({
+    client: client as unknown as SessionClient, correlationId: config.correlationId, projectLabel,
+    publish: event => config.endpoint && config.ipcSecret ? sendIpcNotification(event, { endpoint: config.endpoint, secret: config.ipcSecret }) : Promise.resolve(),
+    publishAttention: delivery.publish,
   })
-  const handle = createCompletionHandler({ client: client as unknown as SessionClient, correlationId: config.correlationId, projectLabel: config.projectLabel ?? directory?.split(/[\\/]/).pop() ?? "", publish: queue.publish })
-  return { event: async ({ event }) => handle(event as CompletionHandlerEvent), dispose: async () => { queue.dispose() } }
+  return { event: async ({ event }) => handle(event as CoordinatorEvent), dispose: async () => delivery.dispose() }
 }
 
 export default OpenCodeLinuxSessionNotify
