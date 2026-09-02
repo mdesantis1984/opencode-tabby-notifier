@@ -20,8 +20,23 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm test
       - run: npm run test:tabby
+      - run: npm run harness:ipc
+      - run: npm run harness:os
+      - run: npm run harness:telegram
       - run: npm run harness:tabby
-      - run: npm run harness:tabby:dom
+      - name: Check Tabby DOM verifier applicability
+        shell: bash
+        run: |
+          if test -x /opt/Tabby/tabby; then
+            npm run harness:tabby:dom
+          else
+            echo "::notice title=Tabby DOM verifier unavailable::The hosted runner has no /opt/Tabby/tabby executable."
+            echo "Tabby DOM verifier unavailable on the hosted runner; remains a required local release gate." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Install pinned OpenCode CLI
+        run: |
+          npm install --prefix "$RUNNER_TEMP/opencode" --legacy-peer-deps opencode-ai@1.18.26
+          echo "$RUNNER_TEMP/opencode/node_modules/.bin" >> "$GITHUB_PATH"
       - run: npm run harness:opencode:server
       - run: npm run typecheck
       - run: npm run build:tabby
@@ -37,5 +52,6 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci --legacy-peer-deps
       - run: npm test
+      - run: npm run test:tabby
       - run: npm run typecheck
       - run: npm run build:tabby

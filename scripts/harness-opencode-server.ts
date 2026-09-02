@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import { IpcServer } from "../tabby-plugin/src/ipc-server.ts"
 
 const workspace = resolve(dirname(new URL(import.meta.url).pathname), "..")
-const opencode = "/home/mdesantis/.opencode/bin/opencode"
+const opencode = process.env.OPENCODE_BIN ?? "opencode"
 const secret = "harness-opencode-secret"
 const correlationId = "harness-opencode-primary"
 const modelId = "deterministic-model"

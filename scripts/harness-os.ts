@@ -56,13 +56,13 @@ async function main(): Promise<void> {
   }
 
   try {
-    await sendOsNotification(event("success", "demo; $(touch should-not-exist)"), spawnProcess)
+    await sendOsNotification(event("success", "demo; $(touch should-not-exist)"), spawnProcess, {}, "linux")
     await assert.rejects(
-      sendOsNotification(event("failure", "failure"), spawnProcess),
+      sendOsNotification(event("failure", "failure"), spawnProcess, {}, "linux"),
       /notification failed/,
     )
     await assert.rejects(
-      sendOsNotification(event("cancelled", "timeout"), spawnProcess, { timeoutMs: 250 }),
+      sendOsNotification(event("cancelled", "timeout"), spawnProcess, { timeoutMs: 250 }, "linux"),
       /notification timeout/,
     )
 

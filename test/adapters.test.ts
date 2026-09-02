@@ -16,8 +16,14 @@ test("OS adapter uses fixed argv and safe fields", async () => {
     calls.push(command, [...args], options)
     queueMicrotask(() => child.emit("close", 0))
     return child as never
-  })
+  }, {}, "linux")
   assert.deepEqual(calls, ["notify-send", ["--app-name", "OpenCode", "OpenCode", "OpenCode finished: demo (success)"] , { shell: false, stdio: "ignore" }])
+})
+
+test("OS adapter is a no-op on non-Linux platforms", async () => {
+  let spawned = false
+  await sendOsNotification(event, () => { spawned = true; throw new Error("must not spawn") }, {}, "win32")
+  assert.equal(spawned, false)
 })
 
 test("Telegram adapter sends exactly one private HTML message through sendMessage", async () => {

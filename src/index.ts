@@ -44,8 +44,8 @@ export function notificationBody(directory?: string): string {
 }
 
 type Spawn = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess
-export function sendLinuxNotification(title: string, body: string, spawnProcess: Spawn = spawn): Promise<void> {
-  if (process.platform !== "linux") return Promise.resolve()
+export function sendLinuxNotification(title: string, body: string, spawnProcess: Spawn = spawn, platform: NodeJS.Platform = process.platform): Promise<void> {
+  if (platform !== "linux") return Promise.resolve()
   return new Promise((resolve, reject) => {
     const child = spawnProcess("notify-send", ["--app-name", APP_NAME, "--urgency", "normal", title, body], { shell: false, stdio: "ignore" })
     child.once("error", reject); child.once("close", code => code === 0 ? resolve() : reject(new Error("notify-send failed")))
