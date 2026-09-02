@@ -1,0 +1,15 @@
+name: Bug report
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private paths, payloads, or sensitive logs. Report vulnerabilities privately through SECURITY.md.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+    validations: { required: true }
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations: { required: true }

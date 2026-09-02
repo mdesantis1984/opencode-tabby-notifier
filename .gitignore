@@ -11,6 +11,12 @@ coverage/
 *.log
 logs/
 report/
+*.tgz
+*.crash
+*.dmp
+test-results/
+playwright-report/
+cdp-data/
 
 # Local environment and secrets
 .env
@@ -28,3 +34,6 @@ Thumbs.db
 
 # Local project tooling
 .atl/
+.codegraph/
+tmp/
+temp/

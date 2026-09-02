@@ -1,0 +1,10 @@
+name: Feature request
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets or private machine details. Security reports belong in SECURITY.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and proposed outcome
+    validations: { required: true }

@@ -19,4 +19,23 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:tabby
+      - run: npm run harness:tabby
+      - run: npm run harness:tabby:dom
+      - run: npm run harness:opencode:server
       - run: npm run typecheck
+      - run: npm run build:tabby
+      - run: npm run audit:production
+      - run: npm pack --dry-run --json
+      - run: npm pack --workspace tabby-plugin --dry-run --json
+  windows:
+    runs-on: windows-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci --legacy-peer-deps
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build:tabby

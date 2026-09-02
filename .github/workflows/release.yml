@@ -1,0 +1,23 @@
+name: Release packages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    environment: npm-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - run: npm ci --legacy-peer-deps
+      - run: npm test && npm run test:tabby && npm run typecheck && npm run build:tabby
+      - run: npm publish --provenance --access public
+      - run: npm publish --workspace tabby-plugin --provenance --access public
