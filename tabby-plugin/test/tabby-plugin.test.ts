@@ -823,19 +823,19 @@ test("provider clones a complete local profile and injects runtime values only i
   assert.deepEqual(Object.keys(parameters.inputs).sort(), ["correlationId", "profile"])
 })
 
-test("provider runtime environment reaches a real shell boundary", async (t) => {
+test("provider runtime environment reaches a real process boundary", async (t) => {
   const provider = new TabbyCompletionProfileProvider()
   t.after(async () => { await provider.shutdown() })
 
   const parameters = await provider.getNewTabParameters(completeLocalProfile() as never)
   const profile = parameters.inputs.profile as unknown as ReturnType<typeof completeLocalProfile>
   const env = profile.options.env as Record<string, string>
-  const { stdout } = await execFileAsync("/bin/sh", [
-    "-c",
-    "printf '%s\\n' \"$OPENCODE_NOTIFY_CORRELATION\" \"$OPENCODE_NOTIFY_IPC_SECRET\" \"$OPENCODE_NOTIFY_IPC_ENDPOINT\" \"$OPENCODE_NOTIFY_PROJECT_LABEL\"",
+  const { stdout } = await execFileAsync(process.execPath, [
+    "-e",
+    "process.stdout.write(JSON.stringify(['OPENCODE_NOTIFY_CORRELATION', 'OPENCODE_NOTIFY_IPC_SECRET', 'OPENCODE_NOTIFY_IPC_ENDPOINT', 'OPENCODE_NOTIFY_PROJECT_LABEL'].map(key => process.env[key] ?? '')))",
   ], { cwd: process.cwd(), env: { ...process.env, ...env } })
 
-  assert.deepEqual(stdout.trim().split("\n"), [
+  assert.deepEqual(JSON.parse(stdout), [
     env.OPENCODE_NOTIFY_CORRELATION,
     env.OPENCODE_NOTIFY_IPC_SECRET,
     env.OPENCODE_NOTIFY_IPC_ENDPOINT,

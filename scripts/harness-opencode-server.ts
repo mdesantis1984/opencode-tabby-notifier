@@ -19,6 +19,24 @@ type Scenario = "success" | "permission" | "question" | "retry" | "error" | "abo
 
 type Event = { type?: string; properties?: Record<string, unknown>; [key: string]: unknown }
 type Child = { id: string; parentID?: string; parentId?: string }
+type NumericVersion = readonly [major: number, minor: number, patch: number]
+
+function parseNumericVersion(value: string, label: string): NumericVersion {
+  const match = value.trim().match(/(?:^|\s)v?(\d+)\.(\d+)\.(\d+)(?:[^\d]|$)/)
+  assert.ok(match, `${label} must contain a numeric semantic version: ${value.trim()}`)
+  return [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+function compareVersions(left: NumericVersion, right: NumericVersion): number {
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index]
+  }
+  return 0
+}
+
+function formatVersion(version: NumericVersion): string {
+  return version.join(".")
+}
 
 function scenarioFromBody(body: string): Scenario {
   if (body.includes("PERMISSION_MARKER")) return "permission"
@@ -211,8 +229,20 @@ async function waitForProvider(requests: Array<unknown>, label: string): Promise
 }
 
 async function main(scenario: Scenario): Promise<void> {
-  const runtimeVersion = spawnSync(opencode, ["--version"], { encoding: "utf8" }).stdout.trim()
-  assert.equal(runtimeVersion, "1.18.26", `isolated harness binary version is ${runtimeVersion}`)
+  const versionProbe = spawnSync(opencode, ["--version"], { encoding: "utf8" })
+  const runtimeVersion = parseNumericVersion(versionProbe.stdout, "OpenCode executable version")
+  const minimumVersion: NumericVersion = [1, 18, 26]
+  const maximumExclusive: NumericVersion = [2, 0, 0]
+  console.log(`OpenCode executable version: ${formatVersion(runtimeVersion)}`)
+  assert.equal(versionProbe.status, 0, `OpenCode version probe failed: ${versionProbe.stderr.trim()}`)
+  const expectedVersion = process.env.OPENCODE_EXPECTED_VERSION
+  if (expectedVersion) {
+    const expected = parseNumericVersion(expectedVersion, "OPENCODE_EXPECTED_VERSION")
+    assert.equal(compareVersions(runtimeVersion, expected), 0, `expected OpenCode ${formatVersion(expected)}, found ${formatVersion(runtimeVersion)}`)
+  } else {
+    assert.ok(compareVersions(runtimeVersion, minimumVersion) >= 0, `OpenCode ${formatVersion(runtimeVersion)} is older than supported 1.18.26`)
+    assert.ok(compareVersions(runtimeVersion, maximumExclusive) < 0, `OpenCode ${formatVersion(runtimeVersion)} is outside supported major version 1`)
+  }
   const tempRoot = await mkdtemp(join(tmpdir(), "opencode-tabby-server-"))
   const provider = mockProvider()
   let opencodeProcess: ChildProcess | undefined

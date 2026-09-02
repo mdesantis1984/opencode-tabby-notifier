@@ -37,7 +37,10 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/opencode" --legacy-peer-deps opencode-ai@1.18.26
           echo "$RUNNER_TEMP/opencode/node_modules/.bin" >> "$GITHUB_PATH"
-      - run: npm run harness:opencode:server
+      - name: Verify pinned OpenCode SSE harness
+        env:
+          OPENCODE_EXPECTED_VERSION: 1.18.26
+        run: npm run harness:opencode:server
       - run: npm run typecheck
       - run: npm run build:tabby
       - run: npm run audit:production

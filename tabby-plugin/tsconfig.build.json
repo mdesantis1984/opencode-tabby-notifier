@@ -15,6 +15,7 @@
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
+    "rootDir": "..",
     "noEmit": false,
     "noEmitOnError": true,
     "declaration": true,
