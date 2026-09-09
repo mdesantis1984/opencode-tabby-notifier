@@ -65,7 +65,7 @@
     "@angular/forms": "15.2.10",
     "@angular/localize": "15.2.10",
     "@angular/platform-browser": "15.2.10",
-    "@angular/platform-browser-dynamic": "15.2.10",
+    "@angular/platform-browser-dynamic": "22.1.5",
     "@ng-bootstrap/ng-bootstrap": "14.2.0",
     "@opencode-ai/plugin": "^1.18.23",
     "@popperjs/core": "2.11.8",
