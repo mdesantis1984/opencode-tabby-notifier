@@ -296,7 +296,9 @@ try {
   })()`)
   assert.equal(afterSiblingFocus.color, "rgb(92, 184, 92)")
    assert.equal(afterSiblingFocus.activity, false)
-  await cdpPage.click("tab-header", pendingHeaderIndex)
+  await cdpPage.evaluate(`document.querySelectorAll('tab-header')[${pendingHeaderIndex}].click()`)
+  await waitFor(readTabStyles, value => value[pendingHeaderIndex]?.active === true, "select completed target")
+  await cdpPage.click(".content-tab-active .xterm-screen", 0)
   const restored = await waitFor(() => cdpPage.evaluate<{ className: string; color: string; activity: boolean }>(`(() => {
     const header = document.querySelectorAll('tab-header')[0]
     const icon = header.querySelector('profile-icon i')
