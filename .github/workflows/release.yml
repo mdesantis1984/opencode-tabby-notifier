@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
     environment: npm-release
     runs-on: ubuntu-latest
     steps:
