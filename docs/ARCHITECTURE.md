@@ -24,7 +24,11 @@ the event to the registered Tabby tab. Split tabs and recovery tokens preserve
 
 The OpenCode plugin is the single writer. Tabby never infers state from PTY
 output; it renders the authenticated projection below and acknowledges it when
-the target tab receives focus.
+the target tab receives focus. A notifier-owned class marks each transient state
+icon because Tabby's `tab.color` drives both the profile icon and its full-width
+tab color bar. Scoped plugin CSS suppresses only that incidental bar while the
+projection is visible; acknowledgment restores the exact original icon, color,
+and activity state.
 
 | State | Official boundary | Icon and color |
 |---|---|---|

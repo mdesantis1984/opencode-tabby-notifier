@@ -12,15 +12,16 @@ import type { ProfileProvider as OfficialProfileProviderType } from "tabby-core"
 import type { BaseTerminalTabComponent as OfficialTerminalTabComponentType } from "tabby-terminal"
 import type { CompletionEventV1 } from "../../src/domain/completion.ts"
 import { createFrame } from "../../src/ipc/protocol.ts"
-import { createTabbyCompletionPlugin, TabbyCompletionModule, TabbyCompletionProfileProvider, TabbyCompletionRecoveryProvider } from "../src/index.ts"
+import { ACTIVE_TAB_STYLE_ID, createTabbyCompletionPlugin, installActiveTabStyle, TabbyCompletionModule, TabbyCompletionProfileProvider, TabbyCompletionRecoveryProvider } from "../src/index.ts"
 import { migrateNotifierRecoveryTokens, sanitizeLaunchProfile, createLaunchEnvironment } from "../src/profile-provider.ts"
 import { RUNTIME_ENV_KEYS, TABBY_RUNTIME_OPTIONS, TabbyRuntimeManager } from "../src/runtime.ts"
 import { TabRegistry } from "../src/tab-registry.ts"
-import { TerminalTab } from "../src/terminal-tab.ts"
+import { NOTIFIER_ICON_CLASS, TerminalTab } from "../src/terminal-tab.ts"
 import { createHeadlessInjector } from "./setup.ts"
 
 const require = createRequire(__filename)
 const execFileAsync = promisify(execFile)
+const notifierIcon = (icon: string): string => `fas ${icon} ${NOTIFIER_ICON_CLASS}`
 const { ProfileProvider: OfficialProfileProvider } = require("tabby-core") as { ProfileProvider: typeof OfficialProfileProviderType }
 const { BaseTerminalTabComponent } = require("tabby-terminal") as { BaseTerminalTabComponent: typeof OfficialTerminalTabComponentType }
 const manifest = require("../package.json") as {
@@ -54,6 +55,38 @@ test("root lockfile links the Tabby workspace under its manifest name", () => {
     resolved: "tabby-plugin",
     link: true,
   })
+})
+
+test("active tab styling uses stable theme tokens and cleans up with its owner", () => {
+  type FakeStyle = { id: string; textContent: string; remove(): void }
+  const styles = new Map<string, FakeStyle>()
+  const targetDocument = {
+    getElementById: (id: string) => styles.get(id) ?? null,
+    createElement: () => {
+      const style: FakeStyle = { id: "", textContent: "", remove: () => styles.delete(style.id) }
+      return style
+    },
+    head: { appendChild: (style: FakeStyle) => { styles.set(style.id, style); return style } },
+  } as unknown as Document
+
+  const remove = installActiveTabStyle(targetDocument)
+  const style = styles.get(ACTIVE_TAB_STYLE_ID)
+  assert.ok(style)
+  assert.match(style.textContent, /tab-header\.active/)
+  assert.match(style.textContent, /tab-header\.active \.index/)
+  assert.match(style.textContent, /tab-body\.content-tab-active::after/)
+  assert.match(style.textContent, /--theme-primary/)
+  assert.match(style.textContent, /opacity: 1 !important/)
+  assert.match(style.textContent, /pointer-events: none/)
+  assert.ok(style.textContent.includes(`tab-header:has(profile-icon .${NOTIFIER_ICON_CLASS}) > .colorbar`))
+  assert.match(style.textContent, /display: none !important/)
+  assert.doesNotMatch(style.textContent, /cdk-drop-list|ng-tns/)
+
+  const removeDuplicate = installActiveTabStyle(targetDocument)
+  removeDuplicate()
+  assert.equal(styles.size, 1)
+  remove()
+  assert.equal(styles.size, 0)
 })
 
 type OrderingApp = {
@@ -198,10 +231,10 @@ test("completion activity remains visible until the notifier terminal receives f
   tab.setCompletionActivity()
   tab.setCompletionActivity()
 
-  assert.equal(tab.icon, "fas fa-bell")
+  assert.equal(tab.icon, notifierIcon("fa-bell"))
   assert.equal(tab.hasActivity, true)
   tab.clearActivity()
-  assert.equal(tab.icon, "fas fa-bell")
+  assert.equal(tab.icon, notifierIcon("fa-bell"))
   assert.equal(tab.hasActivity, true)
   tab.emitFocused()
   assert.equal(tab.icon, "fas fa-terminal")
@@ -216,14 +249,14 @@ test("state projection renders every state and focus acknowledges only its targe
   const first = makeTab("state-first", "/first"), second = makeTab("state-second", "/second")
   first.setSessionState("waiting-permission")
   second.setSessionState("error")
-  assert.equal(first.icon, "fas fa-hand-paper")
+  assert.equal(first.icon, notifierIcon("fa-hand-paper"))
   assert.equal(first.color, "#f0ad4e")
-  assert.equal(second.icon, "fas fa-exclamation-triangle")
+  assert.equal(second.icon, notifierIcon("fa-exclamation-triangle"))
   second.focus()
-  assert.equal(second.icon, "fas fa-exclamation-triangle")
-  assert.equal(first.icon, "fas fa-hand-paper")
+  assert.equal(second.icon, notifierIcon("fa-exclamation-triangle"))
+  assert.equal(first.icon, notifierIcon("fa-hand-paper"))
   second.setSessionState("working", new Date().toISOString(), 1)
-  assert.equal(second.icon, "fas fa-spinner")
+  assert.equal(second.icon, notifierIcon("fa-spinner"))
   first.dispose(); second.dispose()
 })
 
@@ -233,7 +266,7 @@ test("completion activity preserves and restores a null profile icon", () => {
 
   tab.setCompletionActivity()
   tab.setCompletionActivity()
-  assert.equal(tab.icon, "fas fa-bell")
+  assert.equal(tab.icon, notifierIcon("fa-bell"))
   tab.emitFocused()
 
   assert.equal(tab.icon, null)
@@ -257,7 +290,7 @@ test("split completion projects icon and color to the focused leaf without touch
 
   hidden.setCompletionActivity("failure", completedAt(10))
 
-  assert.equal(visible.icon, "fas fa-bell")
+  assert.equal(visible.icon, notifierIcon("fa-bell"))
   assert.equal(visible.color, "#d9534f")
   assert.equal(hidden.icon, "fas fa-code")
   assert.equal(hidden.color, "#abcdef")
@@ -286,7 +319,7 @@ test("completion stays visible after an arbitrary long absence and ignores sibli
   notifier.setCompletionActivity("success", new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString())
   visible.emitFocused()
 
-  assert.equal(visible.icon, "fas fa-bell")
+  assert.equal(visible.icon, notifierIcon("fa-bell"))
   assert.equal(visible.hasActivity, true)
   notifier.emitFocused()
   assert.equal(visible.icon, "fas fa-terminal")
@@ -338,7 +371,7 @@ test("split completion projection keeps the visible leaf active until every pend
   second.setCompletionActivity("cancelled", completedAt(20))
   first.emitFocused()
 
-  assert.equal(visible.icon, "fas fa-bell")
+  assert.equal(visible.icon, notifierIcon("fa-bell"))
   assert.equal(visible.color, "#f0ad4e")
 
   second.emitFocused()
@@ -366,7 +399,7 @@ test("clearing native activity does not acknowledge completion", () => {
 
   tab.clearActivity()
 
-  assert.equal(tab.icon, "fas fa-bell")
+  assert.equal(tab.icon, notifierIcon("fa-bell"))
   assert.equal(tab.hasActivity, true)
 
   tab.emitFocused()
@@ -376,7 +409,7 @@ test("clearing native activity does not acknowledge completion", () => {
   tab.icon = null
   tab.setCompletionActivity()
   tab.clearActivity()
-  assert.equal(tab.icon, "fas fa-bell")
+  assert.equal(tab.icon, notifierIcon("fa-bell"))
   tab.emitFocused()
   assert.equal(tab.icon, null)
   tab.dispose()
@@ -397,7 +430,7 @@ test("pending prioritization colors every outcome and restores exact nullable st
   assert.equal(registry.complete(event(cancelled.correlationId, "cancelled", { outcome: "cancelled", completedAt: completedAt(3) })), true)
   assert.deepEqual(
     [success.icon, success.color, failure.icon, failure.color, cancelled.icon, cancelled.color],
-      ["fas fa-bell", "#5cb85c", "fas fa-bell", "#d9534f", "fas fa-bell", "#f0ad4e"],
+      [notifierIcon("fa-bell"), "#5cb85c", notifierIcon("fa-bell"), "#d9534f", notifierIcon("fa-bell"), "#f0ad4e"],
   )
   assert.equal(success.hasActivity && failure.hasActivity && cancelled.hasActivity, true)
 
@@ -526,7 +559,7 @@ test("pending prioritization safely retains local attention when no owner exists
   const identityChanges = app.tabsIdentityChanges
 
   assert.equal(registry.complete(event(orphan.correlationId, "missing-owner", { outcome: "failure", completedAt: completedAt(10) })), true)
-    assert.equal(orphan.icon, "fas fa-bell")
+    assert.equal(orphan.icon, notifierIcon("fa-bell"))
   assert.equal(orphan.color, "#d9534f")
   assert.equal(orphan.hasActivity, true)
   assert.deepEqual(app.tabs, [ordinary])

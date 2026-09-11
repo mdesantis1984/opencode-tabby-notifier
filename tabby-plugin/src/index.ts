@@ -11,7 +11,7 @@ import { IpcServer } from "./ipc-server.ts"
 import { migrateNotifierRecoveryTokens, TabbyCompletionProfileProvider, TabbyCompletionRecoveryProvider } from "./profile-provider.ts"
 import { TabbyRuntimeManager } from "./runtime.ts"
 import { TabRegistry } from "./tab-registry.ts"
-import { TerminalTab } from "./terminal-tab.ts"
+import { NOTIFIER_ICON_CLASS, TerminalTab } from "./terminal-tab.ts"
 
 const require = NodeModule.createRequire(__filename)
 const { default: TabbyCoreModule, ProfileProvider, TabRecoveryProvider } = require("tabby-core") as {
@@ -24,6 +24,42 @@ const { default: LocalTerminalModule } = require("tabby-local") as {
 }
 const { default: TabbyTerminalModule } = require("tabby-terminal") as {
   default: typeof TabbyTerminalModuleType
+}
+
+export const ACTIVE_TAB_STYLE_ID = "tabby-opencode-notifier-active-tab-style"
+const ACTIVE_TAB_CSS = `
+app-root .main.content > .tab-bar > .tabs > tab-header.active {
+  background-color: var(--opencode-active-tab-bg, var(--theme-primary, #0d6efd)) !important;
+  color: var(--opencode-active-tab-fg, var(--theme-primary-fg, #ffffff)) !important;
+}
+
+app-root .main.content > .tab-bar > .tabs > tab-header.active .index {
+  color: inherit !important;
+  opacity: 1 !important;
+}
+
+app-root .main.content > .tab-bar > .tabs > tab-header:has(profile-icon .${NOTIFIER_ICON_CLASS}) > .colorbar {
+  display: none !important;
+}
+
+app-root .main.content > .content > tab-body.content-tab-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  box-sizing: border-box;
+  border: 3px solid var(--opencode-active-tab-bg, var(--theme-primary, #0d6efd));
+  pointer-events: none;
+}
+`
+
+export function installActiveTabStyle(targetDocument: Document): () => void {
+  if (targetDocument.getElementById?.(ACTIVE_TAB_STYLE_ID)) return () => {}
+  const style = targetDocument.createElement("style")
+  style.id = ACTIVE_TAB_STYLE_ID
+  style.textContent = ACTIVE_TAB_CSS
+  targetDocument.head.appendChild(style)
+  return () => style.remove()
 }
 
 /** Headless adapter retained for protocol-level tests and non-Angular harnesses. */
@@ -78,7 +114,10 @@ export function createTabbyCompletionPlugin(options: {
   ],
 })
 export class TabbyCompletionModule implements OnDestroy {
+  private removeActiveTabStyle: () => void = () => {}
+
   constructor(private readonly runtimeManager: TabbyRuntimeManager, private readonly applicationRef: ApplicationRef | null = null) {
+    if (typeof document !== "undefined") this.removeActiveTabStyle = installActiveTabStyle(document)
     if (typeof localStorage !== "undefined") migrateNotifierRecoveryTokens(localStorage)
     if (process.env.TABBY_NOTIFIER_HARNESS === "1") {
       let harnessCompleted = false
@@ -93,6 +132,7 @@ export class TabbyCompletionModule implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.removeActiveTabStyle()
     void this.runtimeManager.shutdown()
   }
 }

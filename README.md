@@ -37,7 +37,15 @@ the correct profile, including split-tab recovery.
 
 The existing profile icon is preserved. Every actionable state remains visible
 until the target tab receives focus, then the original icon/activity state is
-restored.
+restored. State colors apply to the notifier icon only; Tabby's tab color bar
+remains reserved for the user's configured tab color and is restored with the
+original icon state.
+
+The active top-level Tabby tab uses the theme's semantic primary background and
+contrast-adjusted foreground, while its content receives a matching inset
+outline. A theme can override `--opencode-active-tab-bg` and
+`--opencode-active-tab-fg` without replacing its complete stylesheet or
+changing Tabby's custom CSS.
 
 ## Platform matrix
 

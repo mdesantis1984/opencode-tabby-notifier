@@ -88,7 +88,12 @@ terminal:
   profile: opencode-tabby-notifier:shell
   showTabProfileIcon: true
 appearance:
-  tabsLocation: top
+  tabsLocation: left
+  css: |
+    :root {
+      --opencode-active-tab-bg: #6f42c1;
+      --opencode-active-tab-fg: #ffffff;
+    }
 enableWelcomeTab: false
 pluginBlacklist: []
 `
@@ -188,6 +193,35 @@ try {
   })`), value => value.headers >= 2 && value.icons >= 2, "second real top-level tab")
   assert.equal(siblings.headers, 2)
   assert.equal(siblings.icons, 2)
+  const pluginStyle = await cdpPage.evaluate<{ exists: boolean; css: string }>(`(() => {
+    const style = document.getElementById('tabby-opencode-notifier-active-tab-style')
+    return { exists: Boolean(style), css: style?.textContent ?? '' }
+  })()`)
+  assert.equal(pluginStyle.exists, true)
+  assert.match(pluginStyle.css, /tab-header\.active/)
+  const readTabStyles = () => cdpPage.evaluate<Array<{ active: boolean; background: string; foreground: string; indexForeground: string; indexOpacity: string }>>(`Array.from(document.querySelectorAll('tab-header')).map(header => {
+    const index = header.querySelector('.index')
+    return {
+      active: header.classList.contains('active'),
+      background: getComputedStyle(header).backgroundColor,
+      foreground: getComputedStyle(header).color,
+      indexForeground: getComputedStyle(index).color,
+      indexOpacity: getComputedStyle(index).opacity,
+    }
+  })`)
+  const initialTabStyles = await waitFor(readTabStyles, value => value.length === 2 && value.filter(tab => tab.active).length === 1 && value.some(tab => tab.active && tab.background === "rgb(111, 66, 193)"), "theme-driven active tab")
+  const initialActiveIndex = initialTabStyles.findIndex(tab => tab.active)
+  const initialInactiveIndex = initialActiveIndex === 0 ? 1 : 0
+  assert.equal(initialTabStyles[initialActiveIndex]?.foreground, "rgb(255, 255, 255)")
+  assert.equal(initialTabStyles[initialActiveIndex]?.indexForeground, "rgb(255, 255, 255)")
+  assert.equal(initialTabStyles[initialActiveIndex]?.indexOpacity, "1")
+  assert.notEqual(initialTabStyles[initialActiveIndex]?.background, initialTabStyles[initialInactiveIndex]?.background)
+  const activeContentOutline = await cdpPage.evaluate<{ color: string; width: string; pointerEvents: string }>(`(() => {
+    const activeBody = document.querySelector('tab-body.content-tab-active')
+    const outline = getComputedStyle(activeBody, '::after')
+    return { color: outline.borderTopColor, width: outline.borderTopWidth, pointerEvents: outline.pointerEvents }
+  })()`)
+  assert.deepEqual(activeContentOutline, { color: "rgb(111, 66, 193)", width: "3px", pointerEvents: "none" })
   const siblingBaseline = await cdpPage.evaluate<Array<{ className: string; color: string; activity: boolean }>>(`(Array.from(document.querySelectorAll('tab-header')).map(header => {
     const icon = header.querySelector('profile-icon i')
     return { className: String(icon?.className ?? ''), color: getComputedStyle(icon).color, activity: Boolean(header.querySelector('.activity-indicator')) }
@@ -206,19 +240,33 @@ try {
     error: { icon: "fa-exclamation-triangle", color: "rgb(217, 83, 79)" },
     completed: { icon: "fa-bell", color: "rgb(92, 184, 92)" },
   }
-  const readFirst = () => cdpPage.evaluate<{ className: string; color: string; activity: boolean }>(`(() => { const header = document.querySelector('tab-header'); const icon = header?.querySelector('profile-icon i'); return { className: String(icon?.className ?? ''), color: getComputedStyle(icon).color, activity: Boolean(header?.querySelector('.activity-indicator')) } })()`)
+  const readFirst = () => cdpPage.evaluate<{ className: string; color: string; activity: boolean; colorbarVisible: boolean }>(`(() => {
+    const header = document.querySelector('tab-header')
+    const icon = header?.querySelector('profile-icon i')
+    const colorbar = header?.querySelector('.colorbar')
+    return {
+      className: String(icon?.className ?? ''),
+      color: getComputedStyle(icon).color,
+      activity: Boolean(header?.querySelector('.activity-indicator')),
+      colorbarVisible: Boolean(colorbar) && getComputedStyle(colorbar).display !== 'none',
+    }
+  })()`)
   for (const state of ["working", "waiting-permission", "waiting-question", "retrying", "error", "completed"] as SessionState[]) {
     const event: SessionStateEventV1 = { version: 1, eventId: `dom-${state}`, correlationId: launch.correlationId, state, projectLabel: "dom", occurredAt: new Date().toISOString(), generation: 0 }
     const status = await cdpPage.evaluate<number>(`fetch(${JSON.stringify(launch.endpoint)}, { method: "POST", headers: { "content-type": "application/json" }, body: ${JSON.stringify(createFrame(event, launch.secret))} }).then(response => response.status)`)
     assert.equal(status, 204)
     const view = await waitFor(readFirst, value => value.className.split(/\s+/).includes(expected[state].icon) && value.color === expected[state].color, `rendered ${state}`)
     assert.equal(view.color, expected[state].color)
+    assert.equal(view.className.split(/\s+/).includes("opencode-notifier-state-icon"), true)
+    assert.equal(view.colorbarVisible, false)
     if (state === "waiting-permission" || state === "waiting-question" || state === "error") {
       await cdpPage.click("tab-header", 0)
+      await waitFor(readTabStyles, value => value[0]?.active === true && value[0]?.background === "rgb(111, 66, 193)", `active tab color on first header for ${state}`)
       const persistent = await readFirst()
       assert.equal(persistent.className.split(/\s+/).includes(expected[state].icon), true)
       assert.equal(persistent.color, expected[state].color)
       await cdpPage.click("tab-header", 1)
+      await waitFor(readTabStyles, value => value[1]?.active === true && value[1]?.background === "rgb(111, 66, 193)", `active tab color on second header for ${state}`)
     }
   }
   for (let cycle = 0; cycle < 20; cycle++) {
@@ -261,5 +309,5 @@ try {
   const marker = await readFile(join(tempRoot, "isolation-marker"), "utf8")
   assert.equal(marker, "isolated")
   await rm(tempRoot, { recursive: true, force: true })
-   console.log(JSON.stringify({ architecture: "isolated-tabby-electron-cdp", assertions: ["top-level DOM baseline class/color", "authenticated IPC-rendered all six state classes/colors", "20-cycle persistence", "top-level sibling isolation", "completed target focus restores exact baseline"], states: ["working", "waiting-permission", "waiting-question", "retrying", "error", "completed"], cleanup: cleanupPath, stderr: stderr.includes("secret") ? "unexpected-sensitive-diagnostic" : "bounded" }))
+   console.log(JSON.stringify({ architecture: "isolated-tabby-electron-cdp", assertions: ["top-level DOM baseline class/color", "theme-driven active tab color and index contrast follow selection", "matching active content outline", "notifier state colors do not render as tab colorbars", "authenticated IPC-rendered all six state classes/colors", "20-cycle persistence", "top-level sibling isolation", "completed target focus restores exact baseline"], states: ["working", "waiting-permission", "waiting-question", "retrying", "error", "completed"], cleanup: cleanupPath, stderr: stderr.includes("secret") ? "unexpected-sensitive-diagnostic" : "bounded" }))
 }
