@@ -12,3 +12,8 @@ and [Semantic Versioning](https://semver.org/).
   errors, and completed/idle, with state-specific persistent Tabby indicators.
 - HMAC-authenticated loopback IPC with bounded replay protection.
 - Tabby automatic-discovery metadata and public release documentation.
+
+### Fixed
+
+- Prevented transient notifier state colors from rendering as misleading color
+  bars on inactive Tabby tabs.

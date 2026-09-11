@@ -20,20 +20,23 @@ const { BaseTerminalTabComponent } = require("tabby-terminal") as {
   BaseTerminalTabComponent: typeof BaseTerminalTabComponentType
 }
 
+export const NOTIFIER_ICON_CLASS = "opencode-notifier-state-icon"
+const notifierIcon = (icon: string): string => `${icon} ${NOTIFIER_ICON_CLASS}`
+
 // fa-bell is part of the installed Tabby Font Awesome bundle; no unsupported animation class is used.
-const COMPLETION_ACTIVITY_ICON = "fas fa-bell"
+const COMPLETION_ACTIVITY_ICON = notifierIcon("fas fa-bell")
 const COMPLETION_ACTIVITY_COLORS: Record<Outcome, string> = {
   success: "#5cb85c",
   failure: "#d9534f",
   cancelled: "#f0ad4e",
 }
 export const SESSION_STATE_PRESENTATION: Record<SessionState, { icon: string; color: string }> = {
-  working: { icon: "fas fa-spinner", color: "#337ab7" },
-  "waiting-permission": { icon: "fas fa-hand-paper", color: "#f0ad4e" },
-  "waiting-question": { icon: "fas fa-question-circle", color: "#f0ad4e" },
-  retrying: { icon: "fas fa-redo", color: "#8e44ad" },
-  error: { icon: "fas fa-exclamation-triangle", color: "#d9534f" },
-  completed: { icon: "fas fa-bell", color: "#5cb85c" },
+  working: { icon: notifierIcon("fas fa-spinner"), color: "#337ab7" },
+  "waiting-permission": { icon: notifierIcon("fas fa-hand-paper"), color: "#f0ad4e" },
+  "waiting-question": { icon: notifierIcon("fas fa-question-circle"), color: "#f0ad4e" },
+  retrying: { icon: notifierIcon("fas fa-redo"), color: "#8e44ad" },
+  error: { icon: notifierIcon("fas fa-exclamation-triangle"), color: "#d9534f" },
+  completed: { icon: notifierIcon("fas fa-bell"), color: "#5cb85c" },
 }
 
 type CompletionProjection = {
