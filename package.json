@@ -76,7 +76,7 @@
     "tabby-local": "1.0.231-nightly.0",
     "tabby-settings": "1.0.231-nightly.0",
     "tabby-terminal": "1.0.231-nightly.0",
-    "ts-loader": "9.5.2",
+    "ts-loader": "9.6.2",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "typescript-for-ts-loader": "npm:typescript@5.9.3",
