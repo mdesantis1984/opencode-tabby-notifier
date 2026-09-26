@@ -11,12 +11,13 @@ const { ProfileProvider, TabRecoveryProvider } = require("tabby-core") as {
   TabRecoveryProvider: typeof TabRecoveryProviderType
 }
 
-type CompleteSessionOptions = SessionOptions & { shellType: "unix" }
+type CompleteSessionOptions = SessionOptions & { shellType: "unix"; homeDirArgs: string[] }
 
 const defaultSessionOptions = (command = ""): CompleteSessionOptions => ({
   restoreFromPTYID: null,
   command,
   args: [],
+  homeDirArgs: [],
   cwd: null,
   env: {},
   width: null,
@@ -82,15 +83,16 @@ export function migrateNotifierRecoveryTokens(storage: { getItem(key: string): s
 }
 
 export function cloneRuntimeProfile(profile: NotifierProfile): NotifierProfile {
-  const options = profile.options ?? defaultSessionOptions()
+  const options = (profile.options ?? defaultSessionOptions()) as SessionOptions & { homeDirArgs?: string[] | null }
   return {
     ...profile,
     options: {
       ...defaultSessionOptions(),
       ...options,
       args: [...(options.args ?? [])],
+      homeDirArgs: [...(options.homeDirArgs ?? [])],
       env: { ...(options.env ?? {}) },
-    },
+    } as SessionOptions & { homeDirArgs: string[] },
   }
 }
 

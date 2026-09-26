@@ -889,6 +889,7 @@ test("provider exposes exactly one complete built-in shell profile", async (t) =
     restoreFromPTYID: null,
     command: process.env.SHELL || "/bin/bash",
     args: [],
+    homeDirArgs: [],
     cwd: null,
     env: {},
     width: null,
@@ -897,6 +898,40 @@ test("provider exposes exactly one complete built-in shell profile", async (t) =
     pauseAfterExit: false,
     runAsAdministrator: false,
   })
+})
+
+test("homeDirArgs support empty cwd for built-in and missing profile options", async (t) => {
+  const provider = new TabbyCompletionProfileProvider()
+  t.after(async () => { await provider.shutdown() })
+  const builtin = (await provider.getBuiltinProfiles())[0]
+  assert.ok(builtin.options)
+  const absentOptions = [null, ""].map(cwd => ({ ...completeLocalProfile().options, cwd }))
+  for (const options of absentOptions) assert.equal(Object.hasOwn(options, "homeDirArgs"), false)
+
+  for (const options of [builtin.options, { ...builtin.options, homeDirArgs: undefined }, { ...builtin.options, homeDirArgs: null }, ...absentOptions]) {
+    const profile = completeLocalProfile({ options })
+    const original = structuredClone(profile)
+    const parameters = await provider.getNewTabParameters(profile as never)
+    const runtimeOptions = parameters.inputs.profile.options as typeof options & { homeDirArgs?: string[] }
+    assert.deepEqual(profile, original)
+    assert.equal(runtimeOptions.cwd, options.cwd)
+    assert.deepEqual([...(runtimeOptions.homeDirArgs as string[])], [])
+  }
+  assert.deepEqual((provider.configDefaults.options as { homeDirArgs?: string[] }).homeDirArgs, [])
+})
+
+test("homeDirArgs supplied by a profile are preserved without sharing the input array", async (t) => {
+  const provider = new TabbyCompletionProfileProvider()
+  t.after(async () => { await provider.shutdown() })
+  const homeDirArgs = ["--login"]
+  const profile = completeLocalProfile({ options: { ...completeLocalProfile().options, cwd: null, homeDirArgs } })
+  const parameters = await provider.getNewTabParameters(profile as never)
+  const runtimeOptions = parameters.inputs.profile.options as unknown as { homeDirArgs: string[]; cwd: string | null }
+
+  assert.equal(runtimeOptions.cwd, null)
+  assert.deepEqual([...runtimeOptions.homeDirArgs], ["--login"])
+  assert.notStrictEqual(runtimeOptions.homeDirArgs, homeDirArgs)
+  assert.deepEqual(homeDirArgs, ["--login"])
 })
 
 test("provider-started endpoint authenticates, correlates, deduplicates, and reaches its tab", async (t) => {
